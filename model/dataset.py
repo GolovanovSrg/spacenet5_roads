@@ -114,4 +114,4 @@ class Spacenet5Dataset(Dataset):
         image = torch.from_numpy(np.transpose(image, (2, 0, 1))).float()
         mask = torch.from_numpy(np.transpose(mask, (2, 0, 1))).long()
 
-        return image, mask
+        return image, mask, idx

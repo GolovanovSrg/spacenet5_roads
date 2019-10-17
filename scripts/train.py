@@ -54,6 +54,9 @@ def main(args):
 
     trainer = Trainer(model=model,
                       optimizer_params={'lr': config.lr,
+                                        'min_lr': config.min_lr,
+                                        'lr_factor': config.lr_factor,
+                                        'lr_patience': config.lr_patience,
                                         'weight_decay': config.weight_decay},
                       loss_params={'focal_weight': config.focal_weight,
                                    'dice_weight': config.dice_weight},
