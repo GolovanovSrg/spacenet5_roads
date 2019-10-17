@@ -75,6 +75,7 @@ class DecoderLinkerBlock(nn.Module):
         x = torch.cat([dec_x, enc_x], dim=1)
         return self.layer(x)
 
+
 class DecoderBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
@@ -90,23 +91,53 @@ class DecoderBlock(nn.Module):
         return self.layer(x)
 
 
+class SEModule(nn.Module):
+
+    def __init__(self, channels, reduction):
+        super().__init__()
+
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc1 = nn.Conv2d(channels, channels // reduction, kernel_size=1)
+        self.bn1 = nn.BatchNorm2d(channels // reduction)
+        self.relu = nn.ReLU(inplace=True)
+        self.fc2 = nn.Conv2d(channels // reduction, channels, kernel_size=1)
+        self.bn2 = nn.BatchNorm2d(channels)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        module_input = x
+
+        x = self.avg_pool(x)
+        x = self.fc1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.bn2(x)
+        x = self.sigmoid(x)
+
+        return module_input * x
+
+
 class Decoder(nn.Module):
-    def __init__(self, enc_channels, out_channels):
+    def __init__(self, img_channels, enc_channels, out_channels, reduction=8):
         super().__init__()
 
         self.linker_layers = nn.ModuleList([DecoderLinkerBlock(f, f)
                                             for f in reversed(enc_channels[:-1])])
         self.layers = nn.ModuleList([DecoderBlock(enc_channels[i], enc_channels[i-1])
                                      for i in reversed(range(1, len(enc_channels)))])
+        self.semodules = nn.ModuleList([SEModule(f, reduction) for f in reversed(enc_channels[:-1])])
 
         self.last_upsample = DecoderBlock(enc_channels[0], enc_channels[0] // 2)
         self.final = nn.Conv2d(enc_channels[0] // 2, out_channels, 3, padding=1)
 
+
     def forward(self, x0, x1, x2, x3, x4):
         enc_features = [x3, x2, x1, x0]
-        x = x4
-        for enc_feature, layer, linker_layer in zip(enc_features, self.layers, self.linker_layers):
+        x = x4  # TODO: add global pooling
+        for enc_feature, layer, semodule, linker_layer in zip(enc_features, self.layers, self.semodules, self.linker_layers):
             x = layer(x)
+            x = x + semodule(x)
             x = linker_layer(x, enc_feature)
 
         x = self.last_upsample(x)
@@ -120,13 +151,26 @@ class Unet(nn.Module):
         super().__init__()
 
         self.encoder = Encoder(in_channels, model, pretrained)
-        self.decoder = Decoder(self.encoder.feature_sizes, out_channels)
+        self.decoder = Decoder(in_channels, self.encoder.feature_sizes, out_channels)
+
+        self.set_activation(nn.CELU(inplace=True))
+        self.set_gn()
 
     def forward(self, x):
         x0, x1, x2, x3, x4 = self.encoder(x)
         out = self.decoder(x0, x1, x2, x3, x4)
 
         return out
+
+    def set_gn(self, n_groups=8):
+        def replace_bn(model):
+            for child_name, child in model.named_children():
+                if isinstance(child, nn.BatchNorm2d):
+                    setattr(model, child_name, nn.GroupNorm(n_groups, child.num_features))
+                else:
+                    replace_bn(child)
+
+        replace_bn(self)
 
     def set_activation(self, activation):
         def replace_activation(model):
