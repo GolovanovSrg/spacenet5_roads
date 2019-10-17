@@ -70,6 +70,35 @@ def load_zipped_pickle(filename):
         return loaded_object
 
 
+def jaccard(predictions, targets):
+    if targets.shape != predictions.shape:
+        raise ValueError("Targets size ({}) must be the same as predictions size ({})"
+                         .format(targets.shape, predictions.shape))
+
+    batch_size = predictions.shape[0]
+    predictions = predictions.long().reshape(batch_size, -1)
+    targets = targets.long().reshape(batch_size, -1)
+
+    intersection = (predictions * targets).sum(dim=-1)
+    union = (predictions + targets).sum(dim=-1) - intersection
+    score = torch.mean((intersection.float() + 1) / (union.float() + 1))
+
+    return score
+
+def multichannel_jaccard(predictions, targets):
+    if targets.shape != predictions.shape:
+        raise ValueError("Targets size ({}) must be the same as predictions size ({})"
+                         .format(targets.shape, predictions.shape))
+    
+    n_channels = predictions.shape[1]
+    result_score = 0
+    for c in range(n_channels):
+        score = jaccard(predictions[:, c, :, :], targets[:, c, :, :])
+        result_score += score / n_channels
+
+    return result_score
+
+
 def gdf_to_array(gdf, im_file, output_raster, mask_burn_val_key='', burnValue=150, NoData_value=0):
     assert output_raster.endswith('.tif')
 
