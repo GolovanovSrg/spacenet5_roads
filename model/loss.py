@@ -18,4 +18,5 @@ def focal_cannab(outputs, targets, gamma=2, eps=1e-8):
     outputs = torch.clamp(outputs, eps, 1 - eps)
     targets = torch.clamp(targets, eps, 1 - eps)
     pt = (1 - targets) * (1 - outputs) + targets * outputs
-    return (-(1. - pt) ** gamma * torch.log(pt)).mean(dim=-1)
+    y = (1 - pt) ** gamma
+    return (-y / y.mean(dim=-1).unsqueeze(-1) * torch.log(pt)).mean(dim=-1)
