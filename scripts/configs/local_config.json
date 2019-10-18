@@ -8,7 +8,7 @@
     "image_size": [1344, 1344],
     "channels": null,
     "n_out_channels": 8,
-    "base_model": "seresnext50",
+    "base_model": "resnet34",
     "pretrained": true,
     "lr": 1e-3,
     "min_lr": 1e-8,

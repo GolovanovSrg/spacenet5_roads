@@ -8,7 +8,8 @@ from attrdict import AttrDict
 
 sys.path.append('../model')
 from dataset import Spacenet5Dataset, TrainTransform, TestTransform
-from model import Unet
+from unet import Unet
+from resfpn import ResFPN
 from trainer import Trainer
 from utils import set_seed, train_val_split, get_spacenet5_data
 
@@ -47,10 +48,21 @@ def main(args):
                                    transform=val_transform,
                                    cache_dir=config.cache_dir)
 
-    model = Unet(in_channels= (8 if config.channels is None else len(config.channels)),
+    '''model = Unet(in_channels=(8 if config.channels is None else len(config.channels)),
                  out_channels=config.n_out_channels,
                  model=config.base_model,
                  pretrained=config.pretrained)
+    '''
+
+    model = ResFPN(in_channels=(8 if config.channels is None else len(config.channels)),
+                  out_channels=config.n_out_channels,
+                  model=config.base_model,
+                  pretrained=config.pretrained,
+                  fpn_channels=256,
+                  reduction=4,
+                  dropout=0,
+                  attention_type='none',
+                  attention_post=False)
 
     trainer = Trainer(model=model,
                       optimizer_params={'lr': config.lr,

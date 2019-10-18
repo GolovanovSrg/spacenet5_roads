@@ -1,5 +1,6 @@
 from collections import OrderedDict
 
+import numpy as np
 import torch
 import torch.nn as nn
 from pretrainedmodels import resnet34, se_resnext50_32x4d, se_resnext101_32x4d
@@ -24,7 +25,6 @@ class Encoder(nn.Module):
         else:
             assert False
 
-
         layer0_modules = [
             ('conv1', nn.Conv2d(in_channels, 64, 3, stride=2, padding=1, bias=False)),
             ('bn1', nn.BatchNorm2d(64)),
@@ -38,6 +38,7 @@ class Encoder(nn.Module):
             ('bn3', nn.BatchNorm2d(64)),
             ('relu3', nn.ReLU(inplace=True)),
         ]
+
         self.model.max_pool = nn.MaxPool2d(3, stride=2, ceil_mode=True)
         self.model.layer0 = nn.Sequential(OrderedDict(layer0_modules))
         self.model.last_linear = None
@@ -64,7 +65,7 @@ class DecoderLinkerBlock(nn.Module):
         super().__init__()
 
         layer_modules = [
-            ('conv', nn.Conv2d(2 * in_channels, out_channels, 3, padding=1)),
+            ('conv', nn.Conv2d(2 * in_channels, out_channels, 3, padding=1, bias=False)),
             ('bn', nn.BatchNorm2d(out_channels)),
             ('relu', nn.ReLU(inplace=True))
         ]
@@ -81,7 +82,7 @@ class DecoderBlock(nn.Module):
         super().__init__()
 
         layer_modules = [('upsample', nn.Upsample(scale_factor=2)),
-                         ('conv', nn.Conv2d(in_channels, out_channels, 3, padding=1)),
+                         ('conv', nn.Conv2d(in_channels, out_channels, 3, padding=1, bias=False)),
                          ('bn', nn.BatchNorm2d(out_channels)),
                          ('relu', nn.ReLU(inplace=True))
         ]
@@ -97,10 +98,10 @@ class SEModule(nn.Module):
         super().__init__()
 
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc1 = nn.Conv2d(channels, channels // reduction, kernel_size=1)
+        self.fc1 = nn.Conv2d(channels, channels // reduction, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(channels // reduction)
         self.relu = nn.ReLU(inplace=True)
-        self.fc2 = nn.Conv2d(channels // reduction, channels, kernel_size=1)
+        self.fc2 = nn.Conv2d(channels // reduction, channels, kernel_size=1, bias=False)
         self.bn2 = nn.BatchNorm2d(channels)
         self.sigmoid = nn.Sigmoid()
 
@@ -119,7 +120,7 @@ class SEModule(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, img_channels, enc_channels, out_channels, reduction=8):
+    def __init__(self, enc_channels, out_channels, reduction=8):
         super().__init__()
 
         self.linker_layers = nn.ModuleList([DecoderLinkerBlock(f, f)
@@ -137,7 +138,7 @@ class Decoder(nn.Module):
         x = x4  # TODO: add global pooling
         for enc_feature, layer, semodule, linker_layer in zip(enc_features, self.layers, self.semodules, self.linker_layers):
             x = layer(x)
-            x = x + semodule(x)
+            #x = x + semodule(x)
             x = linker_layer(x, enc_feature)
 
         x = self.last_upsample(x)
@@ -151,7 +152,7 @@ class Unet(nn.Module):
         super().__init__()
 
         self.encoder = Encoder(in_channels, model, pretrained)
-        self.decoder = Decoder(in_channels, self.encoder.feature_sizes, out_channels)
+        self.decoder = Decoder(self.encoder.feature_sizes, out_channels)
 
         self.set_activation(nn.CELU(inplace=True))
         self.set_gn()
